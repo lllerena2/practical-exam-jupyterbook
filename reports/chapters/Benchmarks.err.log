@@ -1,0 +1,158 @@
+Traceback (most recent call last):
+  File "C:\Users\luisl\anaconda3\envs\practical-exam\lib\site-packages\jupyter_cache\executors\utils.py", line 58, in single_nb_execution
+    executenb(
+  File "C:\Users\luisl\anaconda3\envs\practical-exam\lib\site-packages\nbclient\client.py", line 1314, in execute
+    return NotebookClient(nb=nb, resources=resources, km=km, **kwargs).execute()
+  File "C:\Users\luisl\anaconda3\envs\practical-exam\lib\site-packages\jupyter_core\utils\__init__.py", line 165, in wrapped
+    return loop.run_until_complete(inner)
+  File "C:\Users\luisl\anaconda3\envs\practical-exam\lib\asyncio\base_events.py", line 649, in run_until_complete
+    return future.result()
+  File "C:\Users\luisl\anaconda3\envs\practical-exam\lib\site-packages\nbclient\client.py", line 709, in async_execute
+    await self.async_execute_cell(
+  File "C:\Users\luisl\anaconda3\envs\practical-exam\lib\site-packages\nbclient\client.py", line 1062, in async_execute_cell
+    await self._check_raise_for_error(cell, cell_index, exec_reply)
+  File "C:\Users\luisl\anaconda3\envs\practical-exam\lib\site-packages\nbclient\client.py", line 918, in _check_raise_for_error
+    raise CellExecutionError.from_cell_and_msg(cell, exec_reply_content)
+nbclient.exceptions.CellExecutionError: An error occurred while executing the following cell:
+------------------
+import warnings
+warnings.filterwarnings("ignore")
+
+#Operaciones
+import pandas as pd
+from pandas.plotting import autocorrelation_plot
+import numpy as np
+
+#Graficas
+from matplotlib import pyplot as plt
+import matplotlib.dates as mdates
+import plotly.express as px
+
+#Sklean
+from sklearn.metrics import mean_absolute_error
+
+# Stats Models
+from statsmodels.graphics.tsaplots import plot_predict, plot_acf
+from statsmodels.tsa.holtwinters import SimpleExpSmoothing
+from statsmodels.tsa import stattools
+from statsmodels.stats.stattools import jarque_bera
+from statsmodels.stats.diagnostic import acorr_ljungbox
+from statsmodels.tsa.arima.model import ARIMA
+
+#Varios
+import scipy.stats as stats
+
+
+
+def forecast_accuracy(forecast, actual, str_name, str_model, lj_lags = [10]):
+    mape = np.mean(np.abs(forecast - actual) / np.abs(actual))    # MAPE
+    mae = np.mean(np.abs(forecast - actual))                      # MAE
+    mse = np.mean((forecast - actual) ** 2)                       # MSE
+    rmse = np.sqrt(mse)                                           # RMSE
+
+    # Cálculo del R²
+    ss_res = np.sum((actual - forecast) ** 2)
+    ss_tot = np.sum((actual - np.mean(actual)) ** 2)
+    r2 = 1 - (ss_res / ss_tot)
+
+    # Cálculo de los residuales
+    residuals = actual - forecast
+
+    # Prueba de Ljung-Box
+    lb_test = acorr_ljungbox(residuals, lags=lj_lags, return_df=True)
+    lb_pvalue = lb_test['lb_pvalue'].iloc[-1]  # p-valor en el lag máximo especificado (10 en este caso)
+
+    # Prueba de Jarque-Bera
+    jb_stat, jb_pvalue, skew, kurtosis = jarque_bera(residuals)
+
+    df_acc = pd.DataFrame({
+        'model': str_model,
+        'MAE': [mae],
+        'MSE': [mse],
+        'MAPE': [mape],
+        'RMSE': [rmse],
+        'R2': [r2],
+        'Ljung-Box p-value': [lb_pvalue],
+        'Jarque-Bera p-value': [jb_pvalue]
+    }, index=[str_name])
+
+    return df_acc
+
+
+def independence_normality(residuals, nlags_ljbox):
+  print('----- Test de Independencia  Ljung-Box --------')
+  
+  #Ho: no hay autocorrelación en los residuos
+  acf_, confint_, qstat_, pvalues_ = stattools.acf(residuals, nlags=nlags_ljbox, qstat=True,alpha=0.05)
+  alpha = 0.05
+  
+  for l, p_val in enumerate(pvalues_):
+      if p_val > alpha:
+          print('Null hypothesis is accepted at lag = {} for p-val = {}'.format(l, p_val))
+      else:
+          print('Null hypothesis is rejected at lag = {} for p-val = {}'.format(l, p_val))
+  
+  print('----- Test de Normalidad  Jarque-Bera --------')
+
+  #jarque bera
+  #Ho= los residuos tienen distribuci´on normal
+  JB, JBpv, skew, kurtosis = jarque_bera(residuals)
+
+  if JBpv > alpha:
+        print('Null hypothesis is accepted, residuos normales')
+  else:
+        print('Null hypothesis is rejected, residuos no normales' )
+
+  print('----- Grafico de serie de residuos --------')
+  fig = px.line(residuals, 
+               #x=fechas, 
+                #y='residuos', 
+                title='Serie Temporal de los Residuos', 
+                labels={'fecha': 'Fecha', 'residuos': 'Residuos'})
+  fig.show()
+
+  print('----- QQ Plot --------')
+
+  #Valores teoricos
+  qq = stats.probplot(residuals, dist="norm")
+  # Los valores observados y teóricos
+  teoricos = qq[0][0]  # Cuantiles teóricos
+  observados = qq[0][1]  # Cuantiles observados (residuos)
+  # Crear el DataFrame para el Q-Q plot
+  qq_plot_df = pd.DataFrame({'Teóricos': teoricos, 'Observados': observados})
+  # Crear el Q-Q plot con Plotly Express
+  fig = px.scatter(qq_plot_df, 
+                 x='Teóricos', 
+                 y='Observados', 
+                 title='Q-Q Plot de los Residuos')
+
+# Agregar la línea de referencia (y=x)
+  fig.add_shape(type='line',
+              x0=min(teoricos), y0=min(teoricos),
+              x1=max(teoricos), y1=max(teoricos),
+              line=dict(color='firebrick', dash='dash'))
+
+# Mostrar el gráfico
+  fig.show()
+
+  print('----- ACF de Residuos --------')
+
+  fig = plt.figure(figsize=(5.5, 5.5))
+  ax = fig.add_subplot(1,1,1)
+  ax.set_title('ACF of Residuals')
+  autocorrelation_plot(residuals, color='b', ax = ax)
+  fig.show()
+------------------
+
+
+[1;31m---------------------------------------------------------------------------[0m
+[1;31mModuleNotFoundError[0m                       Traceback (most recent call last)
+Cell [1;32mIn[1], line 12[0m
+[0;32m     10[0m [38;5;28;01mfrom[39;00m [38;5;21;01mmatplotlib[39;00m [38;5;28;01mimport[39;00m pyplot [38;5;28;01mas[39;00m plt
+[0;32m     11[0m [38;5;28;01mimport[39;00m [38;5;21;01mmatplotlib[39;00m[38;5;21;01m.[39;00m[38;5;21;01mdates[39;00m [38;5;28;01mas[39;00m [38;5;21;01mmdates[39;00m
+[1;32m---> 12[0m [38;5;28;01mimport[39;00m [38;5;21;01mplotly[39;00m[38;5;21;01m.[39;00m[38;5;21;01mexpress[39;00m [38;5;28;01mas[39;00m [38;5;21;01mpx[39;00m
+[0;32m     14[0m [38;5;66;03m#Sklean[39;00m
+[0;32m     15[0m [38;5;28;01mfrom[39;00m [38;5;21;01msklearn[39;00m[38;5;21;01m.[39;00m[38;5;21;01mmetrics[39;00m [38;5;28;01mimport[39;00m mean_absolute_error
+
+[1;31mModuleNotFoundError[0m: No module named 'plotly'
+
