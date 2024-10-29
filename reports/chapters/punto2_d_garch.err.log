@@ -1,0 +1,188 @@
+Traceback (most recent call last):
+  File "C:\Users\luisl\anaconda3\envs\practical-exam\lib\site-packages\jupyter_cache\executors\utils.py", line 58, in single_nb_execution
+    executenb(
+  File "C:\Users\luisl\anaconda3\envs\practical-exam\lib\site-packages\nbclient\client.py", line 1314, in execute
+    return NotebookClient(nb=nb, resources=resources, km=km, **kwargs).execute()
+  File "C:\Users\luisl\anaconda3\envs\practical-exam\lib\site-packages\jupyter_core\utils\__init__.py", line 165, in wrapped
+    return loop.run_until_complete(inner)
+  File "C:\Users\luisl\anaconda3\envs\practical-exam\lib\asyncio\base_events.py", line 649, in run_until_complete
+    return future.result()
+  File "C:\Users\luisl\anaconda3\envs\practical-exam\lib\site-packages\nbclient\client.py", line 709, in async_execute
+    await self.async_execute_cell(
+  File "C:\Users\luisl\anaconda3\envs\practical-exam\lib\site-packages\nbclient\client.py", line 1062, in async_execute_cell
+    await self._check_raise_for_error(cell, cell_index, exec_reply)
+  File "C:\Users\luisl\anaconda3\envs\practical-exam\lib\site-packages\nbclient\client.py", line 918, in _check_raise_for_error
+    raise CellExecutionError.from_cell_and_msg(cell, exec_reply_content)
+nbclient.exceptions.CellExecutionError: An error occurred while executing the following cell:
+------------------
+import warnings
+import itertools
+import numpy as np
+import pandas as pd
+
+# Evaluación de modelos
+from sklearn.metrics import mean_absolute_error, mean_absolute_percentage_error, mean_squared_error, r2_score
+
+# Modelos de series de tiempo y estadística
+from statsmodels.tsa.holtwinters import SimpleExpSmoothing, ExponentialSmoothing, Holt
+from statsmodels.tsa.arima.model import ARIMA
+from statsmodels.tsa import stattools
+from statsmodels.stats.stattools import jarque_bera
+from statsmodels.stats.diagnostic import acorr_ljungbox
+from statsmodels.graphics.tsaplots import plot_predict, plot_acf
+from pandas.plotting import autocorrelation_plot
+import statsmodels.api as sm
+
+# Modelos ARCH/GARCH
+from arch import arch_model
+
+# Visualización
+from matplotlib import pyplot as plt
+import plotly.express as px
+import seaborn as sns
+from IPython.display import display, HTML
+
+# Barra de progreso
+from tqdm import tqdm
+
+# Ignorar advertencias de convergencia y otros warnings
+warnings.filterwarnings("ignore")
+
+
+def forecast_accuracy(forecast, actual, str_name, str_model, lj_lags = [10], window_str = ''):
+    mape = np.mean(np.abs(forecast - actual) / np.abs(actual))    # MAPE
+    mae = np.mean(np.abs(forecast - actual))                      # MAE
+    mse = np.mean((forecast - actual) ** 2)                       # MSE
+    rmse = np.sqrt(mse)                                           # RMSE
+
+    # Cálculo del R²
+    ss_res = np.sum((actual - forecast) ** 2)
+    ss_tot = np.sum((actual - np.mean(actual)) ** 2)
+    r2 = 1 - (ss_res / ss_tot)
+
+    # Cálculo de los residuales
+    residuals = actual - forecast
+
+    # Prueba de Ljung-Box
+    lb_test = acorr_ljungbox(residuals, lags=lj_lags, return_df=True)
+    lb_pvalue = lb_test['lb_pvalue'].iloc[-1]  # p-valor en el lag máximo especificado (10 en este caso)
+
+    # Prueba de Jarque-Bera
+    jb_stat, jb_pvalue, skew, kurtosis = jarque_bera(residuals)
+
+    df_acc = pd.DataFrame({
+        'model': str_model,
+        'window': window_str,
+        'MAE': [mae],
+        'MSE': [mse],
+        'MAPE': [mape],
+        'RMSE': [rmse],
+        'R2': [r2],
+        'Ljung-Box p-value': [lb_pvalue],
+        'Jarque-Bera p-value': [jb_pvalue]
+    }, index=[str_name])
+
+    return df_acc
+
+
+def train_val_test(df, window):
+  size = len(df)
+  train_len = size - 56 # El profesor indicó que este siempre era el tamano del training (28+28)
+  val_set_end = train_len + window
+  test_set_end = val_set_end + window
+  
+
+  train_set = df[:train_len]
+  val_set = df[train_len: val_set_end]
+  test_set = df[val_set_end: test_set_end]
+
+  return train_set, val_set, test_set
+
+#Implemementacion de retorno
+# retorno acumulado
+def retorno_acumulado(df, columna):
+    retorno_diario = (df[columna].diff() / df[columna].shift(1))
+    return retorno_diario.cumsum()
+
+def volatilidad(retorno_acum, ventana):
+    std_w = retorno_acum.rolling(window=ventana).std()
+    return std_w
+
+def plot_model(train, val, test, y_pred, title):
+
+    # Prepare the data
+    train_df = pd.DataFrame({
+        'Time': train[-300:].index,
+        'Value': train[-300:].values,
+        'Category': 'Train'
+    })
+    val_df = pd.DataFrame({
+        'Time': val.index,
+        'Value': val.values,
+        'Category': 'Validation'
+    })
+    test_df = pd.DataFrame({
+        'Time': test.index,
+        'Value': test.values,
+        'Category': 'Test'
+    })
+    y_pred_df = pd.DataFrame({
+        'Time': y_pred.index,
+        'Value': y_pred.values,
+        'Category': 'Prediction'
+    })
+
+    # Combine the data
+    df = pd.concat([train_df, val_df, test_df, y_pred_df], axis=0)
+
+    # Add line dash style
+    df['Dash'] = df['Category'].map({
+        'Train': 'solid',
+        'Validation': 'solid',
+        'Test': 'solid',
+        'Prediction': 'dash'
+    })
+
+    # Compute MAE
+    mae = mean_absolute_error(test, y_pred)
+
+    # Plot using Plotly Express
+    fig = px.line(
+        df,
+        x='Time',
+        y='Value',
+        color='Category',
+        line_dash='Dash',
+        title=f"{title}, MAE: {round(mae, 2)}",
+        color_discrete_map={
+            'Train': 'blue',
+            'Validation': 'orange',
+            'Test': 'green',
+            'Prediction': 'red'
+        }
+    )
+
+    fig.update_layout(
+        xaxis_title='Time',
+        yaxis_title='Value',
+        legend_title='',
+        template='plotly_white'
+    )
+
+    fig.show()
+
+
+------------------
+
+
+[1;31m---------------------------------------------------------------------------[0m
+[1;31mModuleNotFoundError[0m                       Traceback (most recent call last)
+Cell [1;32mIn[1], line 20[0m
+[0;32m     17[0m [38;5;28;01mimport[39;00m [38;5;21;01mstatsmodels[39;00m[38;5;21;01m.[39;00m[38;5;21;01mapi[39;00m [38;5;28;01mas[39;00m [38;5;21;01msm[39;00m
+[0;32m     19[0m [38;5;66;03m# Modelos ARCH/GARCH[39;00m
+[1;32m---> 20[0m [38;5;28;01mfrom[39;00m [38;5;21;01march[39;00m [38;5;28;01mimport[39;00m arch_model
+[0;32m     22[0m [38;5;66;03m# Visualización[39;00m
+[0;32m     23[0m [38;5;28;01mfrom[39;00m [38;5;21;01mmatplotlib[39;00m [38;5;28;01mimport[39;00m pyplot [38;5;28;01mas[39;00m plt
+
+[1;31mModuleNotFoundError[0m: No module named 'arch'
+
