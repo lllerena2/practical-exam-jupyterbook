@@ -15,47 +15,118 @@ Traceback (most recent call last):
     raise CellExecutionError.from_cell_and_msg(cell, exec_reply_content)
 nbclient.exceptions.CellExecutionError: An error occurred while executing the following cell:
 ------------------
-import plotly.graph_objects as go
-import pandas as pd
+import numpy as np
+from statsmodels.tsa.stattools import adfuller
+from statsmodels.stats.diagnostic import acorr_ljungbox
 
+# Función para realizar las pruebas ADF y Ljung-Box
+def run_adf_and_ljung(residuals, serie_name):
+    # Remover los NaN en los residuos
+    residuals_clean = residuals[~np.isnan(residuals)]
 
-# Generar estadísticas descriptivas
-stats_all_columns = data.describe()
+    # Aplicar la prueba ADF en los residuos limpios
+    adf_result = adfuller(residuals_clean, autolag='AIC')
 
-# Redondear los valores estadísticos a 2 decimales
-stats_rounded = stats_all_columns.round(2)
+    # Mostrar los resultados de la prueba ADF
+    print(f"\n--- Prueba ADF para {serie_name} ---")
+    print(f"ADF Statistic: {adf_result[0]}")
+    print(f"p-value: {adf_result[1]}")
+    print("Critical Values:")
+    for key, value in adf_result[4].items():
+        print(f'   {key}: {value}')
 
-# Crear la tabla de estadísticas con los valores generados
-header_values = ['Statistic', 'Price', 'Open', 'High', 'Low', 'Vol.', 'Change %']
-stat_values = [
-    ['Count', 'Mean', 'Std', 'Min', '25%', '50%', '75%', 'Max'],
-    stats_rounded['Price'].tolist(),
-    stats_rounded['Open'].tolist(),
-    stats_rounded['High'].tolist(),
-    stats_rounded['Low'].tolist(),
-    stats_rounded['Vol.'].tolist(),
-    stats_rounded['Change %'].tolist()
-]
+    # Realizar la prueba de Ljung-Box con rezagos de 10, 20, y 30
+    ljung_box_test = acorr_ljungbox(residuals_clean, lags=[10, 20, 30], return_df=True)
 
-# Crear la figura de la tabla usando Plotly
-table = go.Figure(data=[go.Table(
-    header=dict(values=header_values, fill_color='paleturquoise', align='center'),
-    cells=dict(values=stat_values, fill_color='lavender', align='center')
-)])
+    # Mostrar los resultados de la prueba Ljung-Box
+    print(f"\n--- Prueba Ljung-Box para {serie_name} ---")
+    print(ljung_box_test)
 
-# Mostrar la tabla
-table.show()
+# Extraer y limpiar los residuos para cada serie descompuesta
 
+# Residuos de Retorno Acumulado Diario
+run_adf_and_ljung(decompose_ret_acum.resid, "Retorno Acumulado Diario")
+
+# Residuos de Volatilidad (7 días)
+run_adf_and_ljung(decompose_vol_7d.resid, "Volatilidad (7 días)")
+
+# Residuos de Volatilidad (14 días)
+run_adf_and_ljung(decompose_vol_14d.resid, "Volatilidad (14 días)")
+
+# Residuos de Volatilidad (21 días)
+run_adf_and_ljung(decompose_vol_21d.resid, "Volatilidad (21 días)")
+
+# Residuos de Volatilidad (28 días)
+run_adf_and_ljung(decompose_vol_28d.resid, "Volatilidad (28 días)")
 
 ------------------
 
+----- stdout -----
+
+--- Prueba ADF para Retorno Acumulado Diario ---
+ADF Statistic: -15.79268667497327
+p-value: 1.097432474723661e-28
+Critical Values:
+   1%: -3.4316779298180458
+   5%: -2.8621267994714574
+   10%: -2.5670823543989867
+
+--- Prueba Ljung-Box para Retorno Acumulado Diario ---
+        lb_stat  lb_pvalue
+10  6684.640050        0.0
+20  8756.122894        0.0
+30  8821.766958        0.0
+
+--- Prueba ADF para Volatilidad (7 días) ---
+ADF Statistic: -21.77837166862849
+p-value: 0.0
+Critical Values:
+   1%: -3.43167766021121
+   5%: -2.8621266803613676
+   10%: -2.5670822909919067
+
+--- Prueba Ljung-Box para Volatilidad (7 días) ---
+         lb_stat  lb_pvalue
+10  11529.955999        0.0
+20  16154.293329        0.0
+30  16530.079740        0.0
+----- stdout -----
+
+--- Prueba ADF para Volatilidad (14 días) ---
+ADF Statistic: -19.011575490251815
+p-value: 0.0
+Critical Values:
+   1%: -3.4316790093412584
+   5%: -2.8621272763958525
+   10%: -2.567082608284997
+
+--- Prueba Ljung-Box para Volatilidad (14 días) ---
+         lb_stat  lb_pvalue
+10  12466.283261        0.0
+20  23048.264815        0.0
+30  23519.077824        0.0
+
+--- Prueba ADF para Volatilidad (21 días) ---
+ADF Statistic: -17.319821144645076
+p-value: 5.490102630843305e-30
+Critical Values:
+   1%: -3.4316809027362725
+   5%: -2.8621281128816367
+   10%: -2.5670830535800473
+
+--- Prueba Ljung-Box para Volatilidad (21 días) ---
+         lb_stat  lb_pvalue
+10  12094.183667        0.0
+20  17392.801705        0.0
+30  22049.299561        0.0
+------------------
 
 [1;31m---------------------------------------------------------------------------[0m
-[1;31mModuleNotFoundError[0m                       Traceback (most recent call last)
-Cell [1;32mIn[5], line 1[0m
-[1;32m----> 1[0m [38;5;28;01mimport[39;00m [38;5;21;01mplotly[39;00m[38;5;21;01m.[39;00m[38;5;21;01mgraph_objects[39;00m [38;5;28;01mas[39;00m [38;5;21;01mgo[39;00m
-[0;32m      2[0m [38;5;28;01mimport[39;00m [38;5;21;01mpandas[39;00m [38;5;28;01mas[39;00m [38;5;21;01mpd[39;00m
-[0;32m      5[0m [38;5;66;03m# Generar estadísticas descriptivas[39;00m
+[1;31mNameError[0m                                 Traceback (most recent call last)
+Cell [1;32mIn[100], line 43[0m
+[0;32m     40[0m run_adf_and_ljung(decompose_vol_21d[38;5;241m.[39mresid, [38;5;124m"[39m[38;5;124mVolatilidad (21 días)[39m[38;5;124m"[39m)
+[0;32m     42[0m [38;5;66;03m# Residuos de Volatilidad (28 días)[39;00m
+[1;32m---> 43[0m run_adf_and_ljung([43mdecompose_vol_28d[49m[38;5;241m.[39mresid, [38;5;124m"[39m[38;5;124mVolatilidad (28 días)[39m[38;5;124m"[39m)
 
-[1;31mModuleNotFoundError[0m: No module named 'plotly'
+[1;31mNameError[0m: name 'decompose_vol_28d' is not defined
 
